@@ -1,0 +1,9 @@
+# GuardianEye — Dependencies
+# Vision Agents SDK by Stream (visionagents.ai)
+# Install: uv sync  OR  pip install -r requirements.txt
+
+# ── Core Vision Agents SDK with required plugins ──────────────────────────────
+vision-agents[anthropic,ultralytics,moondream,deepgram,elevenlabs,getstream]
+
+# ── Utilities ──────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0     # loads .env file automatically

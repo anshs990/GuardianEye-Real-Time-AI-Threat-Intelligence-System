@@ -1,0 +1,51 @@
+# ── API Keys & Secrets ────────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ── Python ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.uv/
+
+# ── YOLO Models (large binary files) ─────────────────────────────
+*.pt
+*.onnx
+*.engine
+
+# ── Node / Frontend ───────────────────────────────────────────────
+node_modules/
+dist/
+.next/
+.nuxt/
+
+# ── Test Videos & Media ───────────────────────────────────────────
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+test_footage/
+test_video*
+
+# ── OS & Editor ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Logs ──────────────────────────────────────────────────────────
+*.log
+logs/
+
+Vision-Agents/

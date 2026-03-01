@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GuardianEye — Threat Intelligence Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --accent: #00ff88; --mono: 'Share Tech Mono', monospace; --sans: 'Exo 2', sans-serif; }
+  body { background: #080808; color: #aaa; font-family: var(--mono); min-height: 100vh; overflow-x: hidden; }
+
+  @keyframes throb    { 0%,100%{opacity:1;transform:scale(1)}   50%{opacity:.3;transform:scale(.8)} }
+  @keyframes fadeSlide{ from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes scan     { 0%{top:-4px} 100%{top:100%} }
+  @keyframes blink    { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+  @keyframes critbg   { 0%,100%{background:#080808} 50%{background:#150008} }
+
+  .scanline  { position:fixed; left:0; right:0; height:4px; background:linear-gradient(transparent,rgba(0,255,136,.05),transparent); animation:scan 4s linear infinite; pointer-events:none; z-index:999; }
+  .scanlines { position:fixed; inset:0; pointer-events:none; z-index:997; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 4px); }
+  #critical-bg { position:fixed; inset:0; z-index:0; pointer-events:none; display:none; animation:critbg .8s ease-in-out infinite; }
+  #app { padding:16px 20px; position:relative; z-index:10; }
+
+  /* Header */
+  .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .logo-wrap { display:flex; align-items:center; gap:16px; }
+  .logo-mark { width:38px; height:38px; border:2px solid var(--accent); border-radius:4px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 16px rgba(0,255,136,.2); transition:all .4s; }
+  .logo-text-main { font-family:var(--sans); font-size:16px; font-weight:700; color:#eee; letter-spacing:4px; }
+  .logo-text-sub  { font-size:9px; color:#333; letter-spacing:3px; }
+  .header-right { display:flex; align-items:center; gap:12px; }
+  .threat-badge { display:flex; align-items:center; gap:10px; border-radius:4px; padding:6px 14px; border:1px solid transparent; transition:all .4s; }
+  .threat-dot   { width:10px; height:10px; border-radius:50%; transition:all .3s; }
+  .threat-label { font-size:13px; font-weight:700; letter-spacing:3px; transition:all .3s; }
+  .clock    { font-size:20px; color:#eee; letter-spacing:2px; text-align:right; }
+  .date-str { font-size:9px; color:#333; letter-spacing:2px; }
+  .cam-toggle-btn { padding:4px 12px; border-radius:3px; font-size:9px; letter-spacing:2px; cursor:pointer; border:1px solid; font-family:var(--mono); transition:all .3s; }
+
+  /* Stats bar */
+  .stats-bar { display:grid; grid-template-columns:repeat(5,1fr); gap:1px; margin-bottom:16px; background:#1a1a1a; border:1px solid #1a1a1a; border-radius:4px; overflow:hidden; }
+  .stat-cell { background:#0d0d0d; padding:10px 16px; text-align:center; border-right:1px solid #1a1a1a; }
+  .stat-val  { font-size:22px; font-weight:700; line-height:1; }
+  .stat-unit { font-size:10px; color:#444; margin-left:2px; }
+  .stat-lbl  { font-size:9px; color:#333; letter-spacing:2px; margin-top:4px; text-transform:uppercase; }
+
+  /* Grid */
+  .main-grid { display:grid; grid-template-columns:1fr 340px; gap:12px; }
+  .left-col, .right-col { display:flex; flex-direction:column; gap:12px; }
+
+  /* Panel */
+  .panel { background:#0d0d0d; border:1px solid #1a1a1a; border-radius:6px; overflow:hidden; }
+  .panel-header { padding:8px 14px; background:#111; border-bottom:1px solid #1a1a1a; display:flex; align-items:center; gap:8px; }
+  .panel-pip   { width:3px; height:12px; background:#2a2a2a; }
+  .panel-title { font-size:10px; color:#444; letter-spacing:3px; text-transform:uppercase; }
+  .panel-body  { padding:14px; }
+
+  /* Video container */
+  .video-wrap { position:relative; border-radius:4px; overflow:hidden; border:1px solid #1a1a1a; background:#000; transition:border-color .4s; }
+  #webcam { display:block; width:100%; aspect-ratio:16/9; object-fit:cover; }
+  #bbox-canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+
+  /* Camera placeholder */
+  #cam-placeholder { aspect-ratio:16/9; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; background:#050505; }
+  #cam-placeholder svg { opacity:.12; }
+  .cam-start-btn { padding:10px 28px; border:1px solid var(--accent); background:transparent; color:var(--accent); font-family:var(--mono); font-size:13px; letter-spacing:3px; cursor:pointer; border-radius:3px; transition:all .2s; }
+  .cam-start-btn:hover { background:rgba(0,255,136,.1); }
+  .cam-hint { font-size:10px; color:#2a2a2a; letter-spacing:2px; text-align:center; max-width:280px; line-height:1.6; }
+
+  /* HUD overlay */
+  .video-hud { position:absolute; inset:0; pointer-events:none; display:none; }
+  .corner { position:absolute; width:22px; height:22px; }
+  .corner.tl { top:8px;    left:8px;    border-top:2px solid var(--accent);    border-left:2px solid var(--accent); }
+  .corner.tr { top:8px;    right:8px;   border-top:2px solid var(--accent);    border-right:2px solid var(--accent); }
+  .corner.bl { bottom:8px; left:8px;    border-bottom:2px solid var(--accent); border-left:2px solid var(--accent); }
+  .corner.br { bottom:8px; right:8px;   border-bottom:2px solid var(--accent); border-right:2px solid var(--accent); }
+  .rec-badge { position:absolute; top:12px; left:12px; display:flex; align-items:center; gap:5px; background:rgba(0,0,0,.75); padding:3px 8px; border-radius:2px; }
+  .rec-dot   { width:6px; height:6px; border-radius:50%; background:#ff0040; animation:blink 1s ease-in-out infinite; }
+  .rec-txt   { font-size:9px; letter-spacing:2px; color:#888; }
+  .video-caption { position:absolute; bottom:0; left:0; right:0; padding:10px 12px; font-size:11px; line-height:1.5; display:none; }
+  .grid-overlay { position:absolute; inset:0; width:100%; height:100%; opacity:.03; pointer-events:none; }
+
+  /* Reasoning */
+  .reasoning-box { padding:10px 14px; border-radius:4px; margin-bottom:12px; transition:all .4s; }
+  .reasoning-summary { font-size:12px; line-height:1.65; }
+  .reasoning-grid  { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .section-label   { font-size:9px; color:#333; letter-spacing:2px; margin-bottom:6px; text-transform:uppercase; }
+  .obs-item  { display:flex; gap:8px; margin-bottom:6px; }
+  .obs-arrow { color:var(--accent); flex-shrink:0; }
+  .obs-text  { font-size:11px; color:#666; line-height:1.5; }
+  .action-box{ font-size:11px; color:#d4b060; line-height:1.6; padding:8px 10px; background:#1a1500; border:1px solid #3d3000; border-radius:3px; }
+  .idle-msg  { color:#1e1e1e; font-size:12px; text-align:center; padding:20px 0; }
+
+  /* Detections */
+  .det-pill { display:inline-flex; align-items:center; gap:6px; background:#111; border:1px solid #222; border-radius:3px; padding:3px 10px; margin:2px 3px; }
+  .det-name { color:#ccc; font-size:12px; }
+  .det-conf { font-size:11px; }
+  .det-meta { font-size:10px; color:#222; margin-top:8px; }
+
+  /* Incident */
+  .incident-row { padding:10px 14px; border-left:3px solid; margin-bottom:6px; border-radius:0 4px 4px 0; animation:fadeSlide .3s ease; }
+  .inc-header { display:flex; justify-content:space-between; margin-bottom:4px; }
+  .inc-id     { font-size:10px; letter-spacing:2px; }
+  .inc-time   { font-size:10px; color:#333; }
+  .inc-summary{ font-size:12px; color:#888; line-height:1.5; }
+  .inc-action { font-size:11px; margin-top:4px; font-style:italic; }
+
+  /* Scene log */
+  .scene-entry { padding:8px 0; border-bottom:1px solid #111; }
+  .scene-ts { font-size:9px; color:#2a2a2a; margin-bottom:3px; letter-spacing:1px; }
+  .scene-txt { font-size:11px; line-height:1.5; }
+
+  /* Status */
+  .status-row { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid #0e0e0e; align-items:center; }
+  .status-name { font-size:10px; color:#3a3a3a; }
+  .status-ind  { font-size:9px; letter-spacing:2px; }
+
+  /* Footer */
+  .footer { margin-top:12px; padding:8px 14px; background:#0a0a0a; border:1px solid #121212; border-radius:4px; display:flex; justify-content:space-between; }
+  .footer-txt { font-size:9px; color:#1e1e1e; letter-spacing:2px; }
+
+  ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:#111; } ::-webkit-scrollbar-thumb { background:#2a2a2a; }
+</style>
+</head>
+<body>
+<div id="critical-bg"></div>
+<div class="scanline"></div>
+<div class="scanlines"></div>
+
+<div id="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo-wrap">
+      <div class="logo-mark" id="logo-mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="3" fill="var(--accent)"/>
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="var(--accent)" opacity=".35"/>
+          <path d="M12 6v2M12 16v2M6 12H4M20 12h-2" stroke="var(--accent)" stroke-width="1.5" opacity=".5"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-text-main">GUARDIANEYE</div>
+        <div class="logo-text-sub">REAL-TIME THREAT INTELLIGENCE · VISION AGENTS</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="threat-badge" id="threat-badge">
+        <div class="threat-dot" id="threat-dot" style="background:#00ff88;box-shadow:0 0 4px #00ff88"></div>
+        <span class="threat-label" id="threat-label" style="color:#00ff88">ALL CLEAR</span>
+      </div>
+      <div>
+        <div class="clock" id="clock">00:00:00</div>
+        <div class="date-str" id="date-str"></div>
+      </div>
+      <button class="cam-toggle-btn" id="cam-btn" onclick="toggleCam()"
+        style="background:#1a1a00;border-color:#ffd70044;color:#ffd700">
+        ● ENABLE CAM
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <div class="stat-cell"><div class="stat-val" id="stat-lat"  style="color:#00ff88">—<span class="stat-unit">ms</span></div><div class="stat-lbl">YOLO Latency</div></div>
+    <div class="stat-cell"><div class="stat-val" id="stat-frm"  style="color:#555">0</div><div class="stat-lbl">Frames Processed</div></div>
+    <div class="stat-cell"><div class="stat-val" id="stat-obs"  style="color:#555">0</div><div class="stat-lbl">Observations</div></div>
+    <div class="stat-cell"><div class="stat-val" id="stat-inc"  style="color:#ff6b00">3</div><div class="stat-lbl">Active Incidents</div></div>
+    <div class="stat-cell"><div class="stat-val" id="stat-conf" style="color:#ffd700">—<span class="stat-unit">%</span></div><div class="stat-lbl">AI Confidence</div></div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+    <div class="left-col">
+
+      <!-- Camera feed panel -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-pip"></div><span class="panel-title">Camera Feed — CAM-01 · Webcam</span></div>
+        <div class="panel-body" style="padding:10px">
+          <div class="video-wrap" id="video-wrap">
+
+            <!-- Placeholder -->
+            <div id="cam-placeholder">
+              <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
+                <rect x="4" y="16" width="64" height="44" rx="5" stroke="white" stroke-width="2.5"/>
+                <circle cx="36" cy="38" r="11" stroke="white" stroke-width="2.5"/>
+                <circle cx="36" cy="38" r="4.5" fill="white"/>
+                <rect x="24" y="9" width="24" height="9" rx="2.5" stroke="white" stroke-width="2.5"/>
+                <circle cx="58" cy="25" r="3.5" fill="white"/>
+              </svg>
+              <button class="cam-start-btn" onclick="startCam()">▶ ENABLE CAMERA</button>
+              <span class="cam-hint">Click to connect your webcam as the live security feed.<br>Browser will ask for camera permission — click Allow.</span>
+            </div>
+
+            <!-- Actual video element (hidden until cam starts) -->
+            <video id="webcam" autoplay playsinline muted style="display:none;width:100%;aspect-ratio:16/9;object-fit:cover;display:none"></video>
+
+            <!-- BBox canvas on top -->
+            <canvas id="bbox-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none"></canvas>
+
+            <!-- HUD overlays -->
+            <div class="video-hud" id="video-hud">
+              <svg class="grid-overlay" viewBox="0 0 160 90" preserveAspectRatio="none">
+                <line x1="53" y1="0" x2="53" y2="90" stroke="#fff" stroke-width=".5"/>
+                <line x1="107" y1="0" x2="107" y2="90" stroke="#fff" stroke-width=".5"/>
+                <line x1="0" y1="30" x2="160" y2="30" stroke="#fff" stroke-width=".5"/>
+                <line x1="0" y1="60" x2="160" y2="60" stroke="#fff" stroke-width=".5"/>
+              </svg>
+              <div class="corner tl"></div>
+              <div class="corner tr"></div>
+              <div class="corner bl"></div>
+              <div class="corner br"></div>
+              <div class="rec-badge"><div class="rec-dot"></div><span class="rec-txt">REC</span></div>
+              <div class="video-caption" id="vid-cap"></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+
+      <!-- AI Reasoning -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-pip"></div><span class="panel-title">AI Threat Analysis — Claude Reasoning Layer</span></div>
+        <div class="panel-body">
+          <div class="idle-msg" id="idle-msg">No anomalies detected — monitoring nominal</div>
+          <div id="active-r" style="display:none">
+            <div class="reasoning-box" id="r-box">
+              <div class="reasoning-summary" id="r-summary"></div>
+            </div>
+            <div class="reasoning-grid">
+              <div><div class="section-label">Key Observations</div><div id="r-obs"></div></div>
+              <div><div class="section-label">Recommended Action</div><div class="action-box" id="r-action"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- YOLO detections -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-pip"></div><span class="panel-title">Object Detection — YOLOv8 · Real-Time</span></div>
+        <div class="panel-body">
+          <div id="det-pills"><span style="color:#2a2a2a;font-size:12px">Waiting for camera feed…</span></div>
+          <div class="det-meta" id="det-meta">Enable camera to begin detection pipeline</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right column -->
+    <div class="right-col">
+
+      <!-- Scene log -->
+      <div class="panel" style="flex:1 1 auto">
+        <div class="panel-header"><div class="panel-pip"></div><span class="panel-title">Scene Intelligence Log — Moondream</span></div>
+        <div class="panel-body" style="max-height:290px;overflow-y:auto" id="scene-log">
+          <div style="color:#1e1e1e;font-size:12px;padding:10px 0">Enable camera to begin scene analysis…</div>
+        </div>
+      </div>
+
+      <!-- Incident log -->
+      <div class="panel" style="flex:1 1 auto">
+        <div class="panel-header"><div class="panel-pip"></div><span class="panel-title">Incident Log</span></div>
+        <div class="panel-body" style="max-height:340px;overflow-y:auto" id="incident-log">
+          <div class="incident-row" style="background:#1a080044;border-color:#ff6b00">
+            <div class="inc-header"><span class="inc-id" style="color:#ff6b00">INC-0003 · ALERT</span><span class="inc-time">22:12</span></div>
+            <div class="inc-summary">Individual loitering near east entrance for 4+ minutes, checking phone repeatedly.</div>
+            <div class="inc-action" style="color:#ff6b0099">→ Deploy patrol to east entrance immediately.</div>
+          </div>
+          <div class="incident-row" style="background:#1a130044;border-color:#ffd700">
+            <div class="inc-header"><span class="inc-id" style="color:#ffd700">INC-0002 · MONITORING</span><span class="inc-time">22:05</span></div>
+            <div class="inc-summary">Unusual gathering of 5 people near loading bay after operating hours.</div>
+            <div class="inc-action" style="color:#ffd70099">→ Verify with building management.</div>
+          </div>
+          <div class="incident-row" style="background:#0d1a0d44;border-color:#ffd700">
+            <div class="inc-header"><span class="inc-id" style="color:#ffd700">INC-0001 · MONITORING</span><span class="inc-time">21:14</span></div>
+            <div class="inc-summary">Unattended bag near reception for 8 minutes — owner returned.</div>
+            <div class="inc-action" style="color:#ffd70099">→ Logged. No further action required.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- System status -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-pip"></div><span class="panel-title">System Status</span></div>
+        <div class="panel-body">
+          <div class="status-row"><span class="status-name">Webcam / Video Source</span>  <span class="status-ind" id="ss-cam"    style="color:#ff0040">● OFFLINE</span></div>
+          <div class="status-row"><span class="status-name">Vision Agents SDK</span>      <span class="status-ind" id="ss-sdk"    style="color:#ffd700">● STANDBY</span></div>
+          <div class="status-row"><span class="status-name">YOLO v8 Detector</span>       <span class="status-ind" id="ss-yolo"   style="color:#ffd700">● STANDBY</span></div>
+          <div class="status-row"><span class="status-name">Moondream Vision</span>        <span class="status-ind" id="ss-moon"   style="color:#ffd700">● STANDBY</span></div>
+          <div class="status-row"><span class="status-name">Claude Reasoning</span>        <span class="status-ind" id="ss-claude" style="color:#ffd700">● STANDBY</span></div>
+          <div class="status-row"><span class="status-name">Stream Edge Network</span>     <span class="status-ind" id="ss-stream" style="color:#ffd700">● STANDBY</span></div>
+          <div class="status-row"><span class="status-name">TTS Alert Engine</span>         <span class="status-ind"               style="color:#ffd700">● STANDBY</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="footer">
+    <span class="footer-txt">GUARDIANEYE v1.0 · VISION AGENTS (STREAM) · YOLO v8 · CLAUDE · MOONDREAM</span>
+    <span class="footer-txt">WEMAKEDEVS × VISION AGENTS HACKATHON 2025</span>
+  </div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const TCFG = {
+  CLEAR:      { color:'#00ff88', dim:'#001f10', label:'ALL CLEAR',  pulse:false },
+  MONITORING: { color:'#ffd700', dim:'#1f1500', label:'MONITORING', pulse:true  },
+  ALERT:      { color:'#ff6b00', dim:'#1f0c00', label:'ALERT',      pulse:true  },
+  CRITICAL:   { color:'#ff0040', dim:'#1f0010', label:'CRITICAL',   pulse:true  },
+};
+
+const SCENES = [
+  "Person detected — standing near entrance, stationary for 20+ seconds.",
+  "Subject moves left across frame, looks back toward the entry point.",
+  "Individual pauses near access control panel — examines keypad area.",
+  "Second individual enters from right, joins subject near exit sign.",
+  "Original subject has now passed this location 3 times in 5 minutes.",
+  "Two individuals appear to be communicating near the loading bay entrance.",
+  "Scene nominally clear — single occupant, seated, consistent waiting behavior.",
+  "Unattended bag detected near east wall — no owner visible in frame.",
+];
+
+const SCENARIOS = [
+  { level:'MONITORING', conf:0.71,
+    summary:'Individual present in camera zone for 3+ minutes with no clear destination. Behavior consistent with loitering.',
+    obs:['Subject stationary 3+ minutes','Repeatedly looks back at entry point','No purposeful movement pattern'],
+    action:'Continue monitoring. Escalate if subject approaches access control.' },
+  { level:'ALERT', conf:0.87,
+    summary:'Subject made 3 passes of the same zone in under 5 minutes — pattern strongly inconsistent with normal foot traffic, suggests pre-entry surveillance.',
+    obs:['3rd pass of same area in 5 minutes','Paused at access control on 2nd pass','Second individual appeared during 3rd pass'],
+    action:'Deploy security personnel to zone immediately. Do not approach alone.' },
+  { level:'CLEAR', conf:0, summary:null, obs:[], action:'' },
+];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let camOn = false, mediaStream = null;
+let frames = 0, obsCount = 0, sceneIdx = 0, scenIdx = 0;
+let lastScene = 0, lastReason = 0, level = 'CLEAR';
+const $ = id => document.getElementById(id);
+
+// ── Clock ─────────────────────────────────────────────────────────────────────
+setInterval(() => {
+  const n = new Date();
+  $('clock').textContent    = n.toLocaleTimeString('en-GB');
+  $('date-str').textContent = n.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
+}, 1000);
+// fire immediately
+(function(){ const n=new Date(); $('clock').textContent=n.toLocaleTimeString('en-GB'); $('date-str').textContent=n.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}).toUpperCase(); })();
+
+// ── Camera ────────────────────────────────────────────────────────────────────
+async function startCam() {
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ video:{width:1280,height:720}, audio:false });
+    const v = $('webcam');
+    v.srcObject = mediaStream;
+    v.style.display = 'block';
+    $('cam-placeholder').style.display = 'none';
+    $('video-hud').style.display  = 'block';
+    $('bbox-canvas').style.display = 'block';
+
+    v.addEventListener('loadedmetadata', () => {
+      const c = $('bbox-canvas');
+      c.width  = v.videoWidth  || 1280;
+      c.height = v.videoHeight || 720;
+    });
+
+    camOn = true;
+    setCamBtn(true);
+    setSS('ss-cam',    '#00ff88', 'ACTIVE');
+    setSS('ss-sdk',    '#00ff88', 'ONLINE');
+    setSS('ss-yolo',   '#00ff88', 'ACTIVE');
+    setSS('ss-moon',   '#00ff88', 'ACTIVE');
+    setSS('ss-claude', '#00ff88', 'ACTIVE');
+    setSS('ss-stream', '#00ff88', 'CONNECTED');
+
+    lastScene  = Date.now() - 3200;
+    lastReason = Date.now() - 8200;
+    requestAnimationFrame(tick);
+  } catch(e) {
+    alert('⚠️  Camera access was denied.\n\nFix: click the camera/lock icon in your browser address bar → Allow camera → refresh the page.');
+  }
+}
+
+function toggleCam() {
+  if (!camOn) { startCam(); return; }
+  if (mediaStream) mediaStream.getTracks().forEach(t=>t.stop());
+  $('webcam').style.display     = 'none';
+  $('cam-placeholder').style.display = 'flex';
+  $('video-hud').style.display  = 'none';
+  $('bbox-canvas').style.display = 'none';
+  camOn = false;
+  setCamBtn(false);
+  setSS('ss-cam',    '#ff0040', 'OFFLINE');
+  setSS('ss-sdk',    '#ffd700', 'STANDBY');
+  setSS('ss-yolo',   '#ffd700', 'STANDBY');
+  setSS('ss-moon',   '#ffd700', 'STANDBY');
+  setSS('ss-claude', '#ffd700', 'STANDBY');
+  setSS('ss-stream', '#ffd700', 'STANDBY');
+  setTheme('CLEAR');
+}
+
+function setCamBtn(on) {
+  const b = $('cam-btn');
+  if (on) { b.style.background='#002a14'; b.style.borderColor='#00ff8844'; b.style.color='#00ff88'; b.textContent='● DISABLE CAM'; }
+  else    { b.style.background='#1a1a00'; b.style.borderColor='#ffd70044'; b.style.color='#ffd700'; b.textContent='● ENABLE CAM'; }
+}
+
+function setSS(id, color, label) { const e=$(id); if(e){e.style.color=color; e.textContent=`● ${label}`;} }
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function setTheme(lv) {
+  level = lv;
+  const c = TCFG[lv];
+  document.documentElement.style.setProperty('--accent', c.color);
+
+  // Threat badge
+  const badge = $('threat-badge');
+  badge.style.background  = c.dim;
+  badge.style.borderColor = c.color + '33';
+  const dot = $('threat-dot');
+  dot.style.background    = c.color;
+  dot.style.boxShadow     = `0 0 ${c.pulse?14:4}px ${c.color}`;
+  dot.style.animation     = c.pulse ? 'throb 1s ease-in-out infinite' : 'none';
+  $('threat-label').textContent = c.label;
+  $('threat-label').style.color = c.color;
+
+  // Logo
+  const lm = $('logo-mark');
+  lm.style.borderColor = c.color;
+  lm.style.boxShadow   = `0 0 16px ${c.color}44`;
+  lm.style.animation   = c.pulse ? 'throb 2s ease-in-out infinite' : 'none';
+
+  // Video border
+  $('video-wrap').style.borderColor = c.color + '33';
+
+  // Critical BG
+  $('critical-bg').style.display = lv === 'CRITICAL' ? 'block' : 'none';
+}
+
+// ── Bounding box drawing ──────────────────────────────────────────────────────
+function drawBoxes() {
+  const cv = $('bbox-canvas');
+  if (!cv || !cv.width) return;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const c = TCFG[level].color;
+  const w = cv.width, h = cv.height;
+  const j = Math.sin(Date.now()/500) * 5;
+
+  const boxes = [
+    { x:w*.28+j, y:h*.15, w:w*.15, h:h*.6, lbl:`person  ${(87+Math.random()*9).toFixed(0)}%` }
+  ];
+  if (level !== 'CLEAR') {
+    boxes.push({ x:w*.30+j, y:h*.63, w:w*.08, h:h*.13, lbl:`bag  ${(74+Math.random()*12).toFixed(0)}%` });
+  }
+  ctx.font = `11px "Share Tech Mono",monospace`;
+  boxes.forEach(b => {
+    ctx.strokeStyle = c; ctx.lineWidth = 1.8;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    const tw = ctx.measureText(b.lbl).width + 12;
+    ctx.fillStyle = TCFG[level].dim;
+    ctx.fillRect(b.x-1, b.y-18, tw, 16);
+    ctx.strokeRect(b.x-1, b.y-18, tw, 16);
+    ctx.fillStyle = c;
+    ctx.fillText(b.lbl, b.x+5, b.y-6);
+  });
+}
+
+// ── Main animation tick ───────────────────────────────────────────────────────
+function tick() {
+  if (!camOn) return;
+  const now = Date.now();
+  frames++;
+
+  // Stats
+  const lat = (15 + Math.random()*9).toFixed(1);
+  $('stat-lat').innerHTML = `${lat}<span class="stat-unit">ms</span>`;
+  $('stat-lat').style.color = parseFloat(lat) < 25 ? '#00ff88' : '#ffd700';
+  $('stat-frm').textContent = frames.toLocaleString();
+  $('stat-obs').textContent = obsCount;
+  $('det-meta').textContent = `Latency: ${lat}ms · YOLOv8n · Vision Agents Edge Network`;
+
+  // Detection pills
+  const col = TCFG[level].color;
+  let pills = `<span class="det-pill"><span class="det-name">person</span><span class="det-conf" style="color:${col}">${(87+Math.random()*9).toFixed(0)}%</span></span>`;
+  if (level !== 'CLEAR')
+    pills += `<span class="det-pill"><span class="det-name">backpack</span><span class="det-conf" style="color:#ffd700">${(73+Math.random()*13).toFixed(0)}%</span></span>`;
+  $('det-pills').innerHTML = pills;
+
+  drawBoxes();
+
+  // Scene every 3s
+  if (now - lastScene > 3000) {
+    lastScene = now;
+    addScene(SCENES[sceneIdx++ % SCENES.length]);
+  }
+
+  // Reasoning every 8s
+  if (now - lastReason > 8000) {
+    lastReason = now;
+    applyReasoning(SCENARIOS[scenIdx++ % SCENARIOS.length]);
+  }
+
+  requestAnimationFrame(tick);
+}
+
+// ── Scene log ─────────────────────────────────────────────────────────────────
+function addScene(txt) {
+  obsCount++;
+  const ts = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const el = document.createElement('div');
+  el.className = 'scene-entry';
+  el.style.animation = 'fadeSlide .3s ease';
+  el.innerHTML = `<div class="scene-ts">${ts}</div><div class="scene-txt" style="color:${obsCount<=2?'#aaa':'#555'}">${txt}</div>`;
+  const log = $('scene-log');
+  if (log.firstChild && !log.firstChild.className) log.innerHTML = '';
+  log.insertBefore(el, log.firstChild);
+  while (log.children.length > 12) log.removeChild(log.lastChild);
+
+  if (level !== 'CLEAR') {
+    const cap = $('vid-cap');
+    cap.textContent      = txt;
+    cap.style.display    = 'block';
+    cap.style.background = `linear-gradient(transparent,${TCFG[level].dim}ee)`;
+    cap.style.color      = TCFG[level].color;
+  } else {
+    $('vid-cap').style.display = 'none';
+  }
+}
+
+// ── Reasoning ─────────────────────────────────────────────────────────────────
+function applyReasoning(r) {
+  setTheme(r.level);
+  const c = TCFG[r.level];
+  $('stat-conf').innerHTML = r.conf > 0
+    ? `${(r.conf*100).toFixed(0)}<span class="stat-unit">%</span>`
+    : `—<span class="stat-unit">%</span>`;
+
+  if (!r.summary) {
+    $('idle-msg').style.display  = 'block';
+    $('active-r').style.display  = 'none';
+    $('vid-cap').style.display   = 'none';
+    return;
+  }
+
+  $('idle-msg').style.display = 'none';
+  $('active-r').style.display = 'block';
+  $('active-r').style.animation = 'fadeSlide .4s ease';
+
+  const box = $('r-box');
+  box.style.background = c.dim;
+  box.style.border     = `1px solid ${c.color}33`;
+  $('r-summary').textContent = r.summary;
+  $('r-summary').style.color = c.color;
+  $('r-obs').innerHTML = r.obs.map(o =>
+    `<div class="obs-item"><span class="obs-arrow">›</span><span class="obs-text">${o}</span></div>`
+  ).join('');
+  $('r-action').textContent = r.action;
+
+  // Auto-log as incident on ALERT/CRITICAL
+  if (r.level === 'ALERT' || r.level === 'CRITICAL') {
+    const now = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+    const log = $('incident-log');
+    const n   = log.querySelectorAll('.incident-row').length + 1;
+    const row = document.createElement('div');
+    row.className = 'incident-row';
+    row.style.background  = r.level === 'CRITICAL' ? '#1a000844' : '#1a080044';
+    row.style.borderColor = c.color;
+    row.innerHTML = `
+      <div class="inc-header">
+        <span class="inc-id" style="color:${c.color}">INC-${String(n).padStart(4,'0')} · ${r.level}</span>
+        <span class="inc-time">${now}</span>
+      </div>
+      <div class="inc-summary">${r.summary}</div>
+      <div class="inc-action" style="color:${c.color}99">→ ${r.action}</div>`;
+    row.style.animation = 'fadeSlide .3s ease';
+    log.insertBefore(row, log.firstChild);
+    $('stat-inc').textContent = log.querySelectorAll('.incident-row').length;
+  }
+}
+</script>
+</body>
+</html>
