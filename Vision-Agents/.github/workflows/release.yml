@@ -1,0 +1,59 @@
+name: Integration (pre-release / release)
+on:
+  release:
+    types: [published] # Run after a Github publish
+
+permissions:
+  contents: read
+  id-token: write       # REQUIRED for PyPI Trusted Publishing (OIDC)
+
+jobs:
+  integration:
+    uses: ./.github/workflows/run_tests.yml
+    with:
+      marker: 'integration'
+    secrets: inherit
+
+  build-core:
+    name: Build & Test Core SDK
+    runs-on: ubuntu-latest
+    environment: pypi
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - uses: ./.github/actions/python-uv-setup
+
+      - name: Clean dist directory
+        run: |
+          rm -rf dist
+
+      - name: Build all distributions
+        run: |
+          uv build --all
+
+      - name: Extract package version (hatch via uv)
+        id: get_version
+        working-directory: agents-core
+        run: |
+          VERSION=$(uvx -q hatch version)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to PyPI (Trusted Publishing)
+        run: uv publish
+
+  test-core-index:
+    name: Verify PIP install works
+    needs: build-core
+    runs-on: ubuntu-latest
+    env:
+      UV_NO_SOURCES: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - uses: ./.github/actions/python-uv-setup
+
+      - name: Install core PyPI using uv
+        run: |
+          uv pip install vision-agents==${{ needs.build-core.outputs.version }}

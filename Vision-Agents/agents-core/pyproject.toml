@@ -1,0 +1,126 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs", "setuptools-scm"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vision-agents"
+description = "Open video agents. Build low latency video and voice agents on any realtime edge network."
+readme = "README.md"
+keywords = ["video AI", "AI", "voice AI", "video agents", "voice agents", "agents", "AI"]
+dynamic = ["version"]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Operating System :: OS Independent",
+]
+
+requires-python = ">=3.10"
+dependencies = [
+    "getstream[webrtc,telemetry]>=2.5.16",
+    "python-dotenv>=1.1.1",
+    "pillow>=10.4.0", # Compatible with moondream SDK (<11.0.0)
+    "numpy>=1.24.0",
+    "mcp>=1.23.3",
+    "colorlog>=6.10.1",
+    "fastapi>=0.128.0",
+    "uvicorn>=0.38.0",
+    "urllib3>=2.6.3",
+    "onnxruntime>=1.16.1",
+]
+
+[project.urls]
+Documentation = "https://visionagents.ai/"
+Website = "https://visionagents.ai/"
+Source = "https://github.com/GetStream/Vision-Agents"
+
+[project.optional-dependencies]
+dev = ["pytest", "mypy", "ruff", "click"]
+anthropic = ["vision-agents-plugins-anthropic"]
+cartesia = ["vision-agents-plugins-cartesia"]
+deepgram = ["vision-agents-plugins-deepgram"]
+elevenlabs = ["vision-agents-plugins-elevenlabs"]
+gemini = ["vision-agents-plugins-gemini"]
+getstream = ["vision-agents-plugins-getstream"]
+heygen = ["vision-agents-plugins-heygen"]
+lemonslice = ["vision-agents-plugins-lemonslice"]
+inworld = ["vision-agents-plugins-inworld"]
+kokoro = ["vision-agents-plugins-kokoro"]
+moonshine = ["vision-agents-plugins-moonshine"]
+nvidia = ["vision-agents-plugins-nvidia"]
+openai = ["vision-agents-plugins-openai"]
+roboflow = ["vision-agents-plugins-roboflow"]
+smart_turn = ["vision-agents-plugins-smart-turn"]
+ultralytics = ["vision-agents-plugins-ultralytics"]
+wizper = ["vision-agents-plugins-wizper"]
+xai = ["vision-agents-plugins-xai"]
+vogent = ["vision-agents-plugins-vogent"]
+huggingface = ["vision-agents-plugins-huggingface"]
+moondream = ["vision-agents-plugins-moondream"]
+aws = ["vision-agents-plugins-aws"]
+openrouter = ["vision-agents-plugins-openrouter"]
+pocket = ["vision-agents-plugins-pocket"]
+qwen = ["vision-agents-plugins-qwen"]
+fish = ["vision-agents-plugins-fish"]
+fast-whisper = ["vision-agents-plugins-fast-whisper"]
+decart = ["vision-agents-plugins-decart"]
+twilio = ["vision-agents-plugins-twilio"]
+turbopuffer = ["vision-agents-plugins-turbopuffer"]
+mistral = ["vision-agents-plugins-mistral"]
+
+all-plugins = [
+    "vision-agents-plugins-anthropic",
+    "vision-agents-plugins-cartesia",
+    "vision-agents-plugins-deepgram",
+    "vision-agents-plugins-elevenlabs",
+    "vision-agents-plugins-gemini",
+    "vision-agents-plugins-getstream",
+    "vision-agents-plugins-heygen",
+    "vision-agents-plugins-lemonslice",
+    "vision-agents-plugins-inworld",
+    "vision-agents-plugins-kokoro",
+    "vision-agents-plugins-moonshine",
+    "vision-agents-plugins-nvidia",
+    "vision-agents-plugins-roboflow",
+    "vision-agents-plugins-openai",
+    "vision-agents-plugins-smart-turn",
+    "vision-agents-plugins-ultralytics",
+    "vision-agents-plugins-wizper",
+    "vision-agents-plugins-xai",
+    "vision-agents-plugins-huggingface",
+    "vision-agents-plugins-moondream",
+    "vision-agents-plugins-aws",
+    "vision-agents-plugins-openrouter",
+    "vision-agents-plugins-pocket",
+    "vision-agents-plugins-fish",
+    "vision-agents-plugins-decart",
+    "vision-agents-plugins-vogent",
+    "vision-agents-plugins-fast-whisper",
+    "vision-agents-plugins-qwen",
+    "vision-agents-plugins-twilio",
+    "vision-agents-plugins-turbopuffer",
+    "vision-agents-plugins-mistral",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.version]
+source = "vcs"
+raw-options = { root = "..", search_parent_directories = true, fallback_version = "0.0.0" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["vision_agents"]
+
+[tool.hatch.build.targets.sdist]
+include = ["vision_agents"]
+
+#[tool.uv.sources]
+# getstream = { git = "https://github.com/GetStream/stream-py.git", branch = "audio-more" }
+# for local development
+# getstream = { path = "../../stream-py/", editable = true }
+# aiortc = { path = "../stream-py/", editable = true }

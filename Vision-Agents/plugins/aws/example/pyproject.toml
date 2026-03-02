@@ -1,0 +1,17 @@
+[project]
+name = "aws-bedrock-realtime-example"
+version = "0.0.0"
+requires-python = ">=3.12,<3.14"
+
+# put only what this example needs
+dependencies = [
+  "python-dotenv>=1.0",
+  "vision-agents",
+  "vision-agents-plugins-aws",
+  "vision-agents-plugins-getstream",
+]
+
+[tool.uv.sources]
+"vision-agents-plugins-getstream" = {path = "../../getstream", editable=true}
+"vision-agents-plugins-aws" = {path = "..", editable=true}
+"vision-agents" = {path = "../../../agents-core", editable=true}
