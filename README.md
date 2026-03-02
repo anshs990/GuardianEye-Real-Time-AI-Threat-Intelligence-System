@@ -1,38 +1,196 @@
-# 👁️ GuardianEye
-### Real-Time AI Threat Intelligence · WeMakeDevs × Vision Agents Hackathon
+# 👁️ GuardianEye — Real-Time AI Threat Intelligence System
 
-> A multi-modal AI security agent that doesn't just *see* threats — it *understands* them.  
-> Built on **Vision Agents by Stream** — YOLO + Moondream + Claude, all in real-time.
+> A multimodal AI security surveillance system that watches, understands, and escalates threats in real time — using vision, audio, and language models working together.
+
+![Status](https://img.shields.io/badge/status-active-brightgreen)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![React](https://img.shields.io/badge/react-18-61dafb)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
-## How It Works
+## What It Does
+
+GuardianEye monitors a live camera feed and automatically detects threats — weapons, physical altercations, distress signals — then escalates with a voice alert and updates a live operator dashboard.
+
+- 🔴 **Weapon detection** — identifies knives, scissors, and dangerous objects in real time
+- 🥊 **Physical threat detection** — detects choking, grabbing, and restraining behaviour
+- 🎙️ **Voice escalation** — speaks CRITICAL/ALERT/MONITORING status via Gemini Realtime TTS
+- 🌐 **Multi-language** — understands threat speech in English, Hindi, Malayalam, and more
+- 📋 **Live dashboard** — React frontend shows incident log, threat level, and scene analysis
+- 🎬 **Video file mode** — analyze recorded footage instead of live webcam
+
+---
+
+## Architecture
 
 ```
-Your Webcam (browser)
-       │
-       │  @stream-io/video-react-sdk  (React frontend)
-       │  Stream's Edge Network — <500ms join, <30ms A/V latency
-       ▼
-  Stream Call: "guardianeye-cam-01"
-       │
-       ▼
-  Vision Agents SDK (Python backend)
-       │
-       ├─► YOLO v11         Every frame · ~18ms · detects people, bags, objects
-       │
-       ├─► Moondream         Every 2.5s · rich natural language scene description
-       │
-       └─► Claude claude-sonnet-4-6  Every 5s · reasons across observation history
-              │
-              ▼
-         Threat Assessment + Spoken Alert (ElevenLabs TTS)
-              │
-              ▼
-         Back through Stream Edge → React Dashboard updates live
+Live Webcam / Video File
+        │
+        ▼
+┌─────────────────────────────────────┐
+│         Stream Vision Agents SDK     │  ← WebRTC real-time transport
+│                                     │
+│  ┌─────────────┐  ┌──────────────┐  │
+│  │  YOLO v11   │  │  Moondream   │  │  ← Frame-level analysis
+│  │ Pose+Weapon │  │  Cloud VLM   │  │
+│  └──────┬──────┘  └──────┬───────┘  │
+│         └────────┬────────┘         │
+│                  ▼                  │
+│         Gemini Realtime             │  ← LLM + STT + TTS in one
+│         (Audio + Vision)            │
+└──────────────────┬──────────────────┘
+                   │
+          Stream Chat API
+                   │
+                   ▼
+         React Dashboard
+    (Threat level · Incidents · Log)
 ```
 
-**The key insight:** Claude doesn't just look at one frame — it receives a rolling history of YOLO detections + Moondream descriptions and reasons like a security professional across *time*. One person walking past = CLEAR. The same person making 3 passes checking exits = ALERT.
+---
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Agent framework | Stream Vision Agents SDK |
+| LLM + STT + TTS | Gemini Realtime (Google AI Studio) |
+| Pose detection | YOLO v11 — Ultralytics |
+| Weapon detection | YOLO v11 COCO (local, <1s latency) |
+| Scene understanding | Moondream Cloud VLM |
+| Video transport | Stream Video SDK (WebRTC) |
+| Chat / messaging | Stream Chat SDK |
+| Frontend | React + Stream Video React SDK |
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.12+
+- Node.js 18+
+- API keys for: Stream, Google AI Studio (Gemini), Moondream
+
+### 1. Clone
+
+```bash
+git clone https://github.com/yourusername/guardianeye.git
+cd guardianeye
+```
+
+### 2. Backend Setup
+
+```bash
+cd Vision-Agents
+uv sync
+uv add opencv-python-headless python-dotenv
+```
+
+Create `.env`:
+
+```env
+STREAM_API_KEY=your_stream_api_key
+STREAM_API_SECRET=your_stream_api_secret
+GOOGLE_API_KEY=your_google_ai_studio_key
+MOONDREAM_API_KEY=your_moondream_api_key
+```
+
+### 3. Frontend Setup
+
+```bash
+cd frontend
+npm install
+```
+
+Create `.env.local`:
+
+```env
+VITE_STREAM_API_KEY=your_stream_api_key
+VITE_STREAM_USER_TOKEN=your_operator_user_token
+VITE_STREAM_USER_ID=operator-01
+VITE_STREAM_CALL_ID=guardianeye-cam-01
+VITE_STREAM_CALL_TYPE=default
+```
+
+### 4. Run
+
+```bash
+# Terminal 1 — Backend agent
+cd Vision-Agents
+python agent.py run
+
+# Terminal 2 — Frontend dashboard
+cd frontend
+npm run dev
+```
+
+Open `http://localhost:5173`
+
+---
+
+## Usage
+
+### Live Webcam Mode
+
+```bash
+python agent.py run
+```
+
+Open the dashboard, allow camera access. The agent joins the call automatically, monitors continuously, and escalates when a threat is detected.
+
+### Recorded Video Mode
+
+```bash
+python agent.py test-video path/to/footage.mp4
+```
+
+The agent analyzes the video file and posts alerts to the dashboard in real time — useful for testing without a live camera.
+
+---
+
+## 🚧 Work in Progress
+
+**Sub-second scene understanding latency** — currently the biggest active focus.
+
+Right now, holding a knife in frame takes up to 20 seconds before the system triggers a CRITICAL alert. This is due to the architectural latency chain: Moondream processes at 1 FPS → periodic prompt fires every 10 seconds → Gemini generates a response (~2–3s). Total worst case: ~15–20 seconds.
+
+The local YOLO weapon detector (`WeaponWatcher`) already brings **knife and scissors detection down to ~1 second** using a state machine with frame-level inference on CPU. The goal is to bring **all threat categories** — physical altercations, distress, loitering — to the same sub-second response window by moving scene understanding off the periodic polling model and onto a frame-triggered, event-driven architecture.
+
+Planned approach:
+- Replace polling-based `periodic_check` with event-driven triggers from YOLO pose anomaly detection
+- Run a lightweight local VLM (e.g. Moondream edge) for instant scene classification per-frame
+- Reserve Gemini Realtime for confirmation and natural language escalation only, not initial detection
+
+---
+
+## How Threat Detection Works
+
+### Weapon Detection — Fast Path (~1s latency)
+
+- `SecurityYOLOProcessor` intercepts every WebRTC frame via `add_pose_to_frame`
+- Frames are pushed to `WeaponWatcher` which runs YOLO object detection locally on CPU
+- Requires 2 consecutive detections above 35% confidence before triggering
+- Requires 3 consecutive misses before clearing the alert
+- 15 second cooldown between repeated alerts
+- Calls `agent.say()` directly — bypasses LLM for instant voice response
+
+### Behavioural Detection — Slow Path (~5–8s latency)
+
+- `periodic_check` sends a prompt to Gemini Realtime every 10 seconds
+- Gemini sees the live video frames alongside YOLO and Moondream context
+- Detects choking, grabbing, restraining, distress, loitering
+- Results posted to Stream Chat and rendered on the React dashboard
+
+### Threat Levels
+
+| Level | Trigger |
+|-------|---------|
+| 🟢 ALL CLEAR | No anomalies detected |
+| 🟡 MONITORING | Unusual but non-threatening activity |
+| 🟠 ALERT | Warrants immediate human review |
+| 🔴 CRITICAL | Immediate threat — escalate now |
 
 ---
 
@@ -40,214 +198,29 @@ Your Webcam (browser)
 
 ```
 guardianeye/
-├── agent.py                    # Vision Agents backend (YOLO + Moondream + Claude)
-├── requirements.txt            # pip install vision-agents[...]
-├── .env.example                # All API keys needed (copy → .env)
-├── frontend/
-│   ├── App.jsx                 # React app — joins Stream call, renders dashboard
-│   ├── package.json            # npm dependencies
-│   └── vite.config.js          # Vite config
-├── prompts/
-│   └── threat_reasoning.py     # All Claude/Moondream prompts
-└── docs/
-    └── DEMO_SCRIPT.md          # 5-minute demo script + pitch
+├── Vision-Agents/
+│   ├── agent.py          # Main agent — processors, detection logic, join_call
+│   ├── .env              # API keys (not committed)
+│   └── yolo11n.pt        # YOLO model (auto-downloaded on first run)
+└── frontend/
+    ├── src/
+    │   └── App.jsx       # Dashboard — Stream Video + Chat integration
+    ├── .env.local        # Frontend keys (not committed)
+    └── package.json
 ```
 
 ---
 
-## Setup (Step by Step)
+## API Keys
 
-### Step 1 — Get Your API Keys (all free tiers)
-
-| Service | Where to get it | Used for |
-|---------|----------------|----------|
-| **Stream** | [getstream.io](https://getstream.io) → Dashboard → Create App | Video transport, edge network |
-| **Anthropic** | [console.anthropic.com](https://console.anthropic.com) | Claude threat reasoning |
-| **Moondream** | [moondream.ai](https://moondream.ai) | Scene understanding |
-| **Deepgram** | [deepgram.com](https://deepgram.com) | Operator speech-to-text |
-| **ElevenLabs** | [elevenlabs.io](https://elevenlabs.io) | Agent spoken alerts |
+| Key | Where to get |
+|-----|-------------|
+| `STREAM_API_KEY` + `STREAM_API_SECRET` | [getstream.io](https://getstream.io) — free tier available |
+| `GOOGLE_API_KEY` | [aistudio.google.com](https://aistudio.google.com) — free |
+| `MOONDREAM_API_KEY` | [moondream.ai](https://moondream.ai) — free tier available |
 
 ---
 
-### Step 2 — Backend (Python Agent)
+## License
 
-```bash
-# Clone Vision Agents
-git clone https://github.com/GetStream/Vision-Agents
-cd Vision-Agents
-
-# Install with uv (recommended)
-pip install uv
-uv venv --python 3.12
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-
-# Install dependencies
-uv add "vision-agents[anthropic,ultralytics,moondream,deepgram,elevenlabs,getstream]"
-
-# Copy your project files into the Vision Agents directory
-cp /path/to/guardianeye/agent.py ./agent.py
-cp /path/to/guardianeye/.env.example ./.env
-
-# Fill in your .env file
-nano .env    # Add all 6 API keys
-
-# Run the agent
-python agent.py
-# → Agent starts at http://0.0.0.0:8080
-# → Waiting for a video call on call ID: "guardianeye-cam-01"
-```
-
----
-
-### Step 3 — Frontend (React)
-
-```bash
-cd frontend
-npm install
-
-# Create .env.local with your Stream keys
-echo "VITE_STREAM_API_KEY=your_stream_api_key" > .env.local
-echo "VITE_STREAM_USER_TOKEN=your_user_token"  >> .env.local
-
-# Generate a user token:
-# Go to → getstream.io Dashboard → Explorer → POST /user_tokens
-# user_id: "operator-01"
-# Copy the token into .env.local
-
-npm run dev
-# → Open http://localhost:5173
-```
-
----
-
-### Step 4 — See It Working
-
-1. Open `http://localhost:5173` in your browser
-2. Allow camera permission when prompted
-3. Your webcam feeds into the Stream call
-4. The Python agent joins the same call automatically
-5. YOLO detects objects in your video in real-time
-6. Moondream describes your scene every few seconds
-7. Claude reasons about threat patterns and speaks alerts via ElevenLabs TTS
-8. The React dashboard shows everything live
-
----
-
-## Frontend package.json
-
-```json
-{
-  "name": "guardianeye-frontend",
-  "private": true,
-  "version": "1.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "@stream-io/video-react-sdk": "^1.7.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.2"
-  }
-}
-```
-
----
-
-## Architecture: Why Vision Agents Is the Hero
-
-Most hackathon projects treat the video SDK as just a pipe. GuardianEye uses Vision Agents as the **intelligence layer**:
-
-- **Stream Edge Network** gives us the <30ms latency needed for real-time response
-- **Native SDK processors** (YOLO, Moondream) run directly on the WebRTC video frames — no copying, no re-encoding
-- **Native LLM APIs** means Claude gets fresh capabilities without wrapper lag
-- **Cross-platform SDKs** — the same agent works on React, Android, iOS, Flutter
-
-This is exactly what Vision Agents was designed for.
-
----
-
-## Judging Criteria — How GuardianEye Scores
-
-| Criterion | Score | Evidence |
-|-----------|-------|----------|
-| **Potential Impact** | ⭐⭐⭐⭐⭐ | $45B physical security market, replaces alert-fatigued human operators |
-| **Creativity & Innovation** | ⭐⭐⭐⭐⭐ | Temporal reasoning across video history — not just object detection |
-| **Technical Excellence** | ⭐⭐⭐⭐⭐ | Full 3-layer pipeline, real Vision Agents SDK, production-grade code |
-| **Real-Time Performance** | ⭐⭐⭐⭐⭐ | <18ms YOLO, <30ms A/V via Stream edge, <500ms join |
-| **User Experience** | ⭐⭐⭐⭐⭐ | Tactical dashboard, spoken alerts, incident log, intuitive UI |
-| **Best Use of Vision Agents** | ⭐⭐⭐⭐⭐ | YOLO + Moondream + Claude + Stream SDK all native, not mocked |
-
----
-
-## ✅ Submission Checklist
-
-### Before You Submit
-- [ ] `agent.py` runs without errors (`python agent.py`)
-- [ ] Frontend connects and shows webcam feed (`npm run dev`)
-- [ ] Agent joins the call and YOLO detections appear
-- [ ] Claude produces at least one MONITORING/ALERT response
-- [ ] ElevenLabs TTS speaks the alert out loud
-- [ ] You've recorded a **demo video** (most important!)
-
-### Demo Video Must Show
-- [ ] Dashboard loading and connecting to Stream
-- [ ] Your webcam appearing in the feed with bounding boxes
-- [ ] YOLO detections updating in real-time with <30ms latency stat
-- [ ] Moondream scene description appearing in Scene Log
-- [ ] Claude producing a threat assessment (walk past camera 3 times)
-- [ ] MONITORING → ALERT escalation visible on screen
-- [ ] Audio alert playing from ElevenLabs TTS
-- [ ] Incident auto-logging in the Incident Log panel
-
-### Submission Requirements
-- [ ] GitHub repo is **public**
-- [ ] README explains what it does, how to run it, why Vision Agents
-- [ ] ⭐ Star the Vision Agents repo: [github.com/GetStream/Vision-Agents](https://github.com/GetStream/Vision-Agents)
-- [ ] Post on social media tagging **@VisionAgents** (gets you into top 10 swag pool)
-
-### Social Media Post Template
-```
-🔐 Built GuardianEye for the @VisionAgents hackathon
-
-An AI security agent that REASONS about threats — not just detects objects.
-
-Stack: YOLO v11 (perception) → Moondream (understanding) → Claude (reasoning)
-All streaming in real-time via @Stream's Vision Agents SDK
-
-18ms detection. Context-aware threat analysis across time.
-Incidents auto-logged. Alerts spoken by AI voice.
-
-The future of physical security is here 👁️
-
-#VisionAgents #WeMakeDevs #BuildInPublic #RealtimeAI
-```
-
----
-
-## Troubleshooting
-
-**Camera not showing in React app**
-→ Allow camera permissions in browser → Refresh
-
-**Agent not joining the call**
-→ Check STREAM_API_KEY and STREAM_API_SECRET in .env
-→ Make sure call ID matches: `"guardianeye-cam-01"` in both agent.py and App.jsx
-
-**No Claude responses appearing**
-→ Check ANTHROPIC_API_KEY in .env
-→ Agent needs at least 3 observations before Claude fires (wait ~15 seconds)
-
-**Token expired error in React**
-→ Generate a fresh user token in Stream Dashboard → Explorer
-
----
-
-*Built for WeMakeDevs × Vision Agents Hackathon 2025*  
-*Powered by Vision Agents (Stream) · Claude (Anthropic) · YOLOv11 · Moondream · ElevenLabs · Deepgram*
+MIT
